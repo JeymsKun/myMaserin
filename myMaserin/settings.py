@@ -67,6 +67,8 @@ REST_FRAMEWORK = {
     ),
 }
 
+AUTH_USER_MODEL = 'farmnaminAuthentication.CustomUser'
+
 ROOT_URLCONF = 'myMaserin.urls'
 
 TEMPLATES = [

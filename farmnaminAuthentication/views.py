@@ -1,18 +1,10 @@
 from rest_framework.response import Response
-from rest_framework.decorators import api_view, permission_classes  # Add permission_classes import
-from rest_framework.permissions import IsAuthenticated  # Import IsAuthenticated
+from rest_framework.decorators import api_view
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import get_user_model, authenticate
 
 User = get_user_model()
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])  # Require authentication
-def get_users(request):
-    users = User.objects.all().values('id', 'username', 'date_joined')
-    return Response(list(users))
-
-# Generate JWT Token
 def get_tokens_for_user(user):
     refresh = RefreshToken.for_user(user)
     return {
@@ -23,20 +15,57 @@ def get_tokens_for_user(user):
 @api_view(['POST'])
 def signup(request):
     username = request.data.get('username')
+    email = request.data.get('email')
+    contact_number = request.data.get('contact_number')
     password = request.data.get('password')
+    confirm_password = request.data.get('confirm_password')
 
-    if User.objects.filter(username=username).exists():
-        return Response({"error": "User already exists"}, status=400)
+    # Validate that all fields are provided.
+    if not all([username, email, contact_number, password, confirm_password]):
+        return Response({"error": "All fields are required."}, status=400)
+    
+    # Validate password match.
+    if password != confirm_password:
+        return Response({"error": "Passwords do not match."}, status=400)
+    
+    # Check if a user with the provided email already exists.
+    if User.objects.filter(email=email).exists():
+        return Response({"error": "User already exists."}, status=400)
 
-    user = User.objects.create_user(username=username, password=password)
+    # Create the user with the provided fields.
+    user = User.objects.create_user(
+        email=email,
+        password=password,
+        username=username,
+        contact_number=contact_number
+    )
     return Response({"message": "User created successfully"})
 
 @api_view(['POST'])
 def login(request):
-    username = request.data.get('username')
+    print("DEBUG: Received data:", request.data)  # Debug log
+
+    # Use 'login_identifier' if provided, else fall back to 'email'
+    login_identifier = request.data.get('login_identifier') or request.data.get('email')
     password = request.data.get('password')
 
-    user = authenticate(username=username, password=password)
+    if not login_identifier or not password:
+        return Response({"error": "Both username or email and password are required."}, status=400)
+
+    user = None
+
+    # If the identifier contains an "@" symbol, assume it's an email.
+    if "@" in login_identifier:
+        user = authenticate(request, username=login_identifier, password=password)
+    else:
+        # Try to find a user by username and check the password manually.
+        try:
+            user_obj = User.objects.get(username=login_identifier)
+            if user_obj.check_password(password):
+                user = user_obj
+        except User.DoesNotExist:
+            user = None
+
     if user:
         tokens = get_tokens_for_user(user)
         return Response({"message": "Login successful", "tokens": tokens})
